@@ -14,7 +14,7 @@ Watch the plugin in action:
 
 This plugin works across all Figma platforms:
 - ✅ **Figma Desktop App** (Windows, macOS, Linux)
-- ✅ **Figma Web App** (Browser-based)
+- ✅ **Figma Web App** (Browser-based) (Soon)
 - ✅ **FigJam** (Collaborative whiteboarding)
 
 ## 🎯 What It Does
