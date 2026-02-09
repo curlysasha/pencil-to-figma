@@ -1,0 +1,28 @@
+# Node modules
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Figma plugin build artifacts
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+.temp/
+
+# Environment variables
+.env
+.env.local

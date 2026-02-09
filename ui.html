@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Pencil.dev Sync</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      color: #333;
+      background: #fff;
+      padding: 16px;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #000;
+    }
+
+    h3 {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #666;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      color: #000;
+    }
+
+    .tab.active {
+      color: #18a0fb;
+      border-bottom-color: #18a0fb;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .drop-zone {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .drop-zone:hover {
+      border-color: #18a0fb;
+      background: #f0f8ff;
+    }
+
+    .drop-zone.active {
+      border-color: #18a0fb;
+      background: #e6f4ff;
+    }
+
+    .drop-zone-icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+
+    .drop-zone-text {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .drop-zone-subtext {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .button {
+      width: 100%;
+      padding: 10px 16px;
+      background: #18a0fb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 8px;
+    }
+
+    .button:hover:not(:disabled) {
+      background: #0d8ce8;
+    }
+
+    .button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .button.secondary {
+      background: white;
+      color: #333;
+      border: 1px solid #ccc;
+    }
+
+    .button.secondary:hover:not(:disabled) {
+      background: #f5f5f5;
+    }
+
+    .file-info {
+      background: #f5f5f5;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .file-name {
+      font-weight: 500;
+      margin-bottom: 4px;
+      color: #000;
+    }
+
+    .file-details {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .status.success {
+      background: #e6f7e6;
+      color: #2d6a2d;
+    }
+
+    .status.error {
+      background: #ffe6e6;
+      color: #d32f2f;
+    }
+
+    .status.info {
+      background: #e6f4ff;
+      color: #0d47a1;
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #333;
+    }
+
+    .help-text {
+      font-size: 11px;
+      color: #999;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .radio-option input[type="radio"] {
+      margin: 0;
+    }
+
+    .radio-option label {
+      font-size: 12px;
+      color: #333;
+      cursor: pointer;
+    }
+
+    .step {
+      display: none;
+    }
+
+    .step.active {
+      display: block;
+    }
+
+    .step-indicator {
+      text-align: center;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #18a0fb;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 32px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button class="tab active" data-tab="import">📥 Import</button>
+    <button class="tab" data-tab="export">📤 Export</button>
+  </div>
+
+  <!-- Import Tab -->
+  <div id="import-tab" class="tab-content active">
+    <!-- Step 1: Upload file -->
+    <div id="step-upload" class="step active">
+      <div class="step-indicator">Step 1 of 2</div>
+      <h2>Import .pen file</h2>
+      
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-icon">📄</div>
+        <div class="drop-zone-text">Drag & drop your .pen file here</div>
+        <div class="drop-zone-subtext">or click to browse</div>
+      </div>
+      
+      <input type="file" id="fileInput" class="file-input" accept=".pen">
+      
+      <div id="fileInfo" style="display: none;"></div>
+      <div id="analysisInfo" style="display: none;"></div>
+      
+      <div class="section">
+        <label class="label">Images (optional)</label>
+        <button class="button secondary" id="selectImagesBtn">Select images folder</button>
+        <div class="help-text">If your design uses local images, select the folder containing them</div>
+        <div id="imagesInfo" style="display: none; margin-top: 8px;"></div>
+      </div>
+      
+      <input type="file" id="imagesInput" class="file-input" webkitdirectory directory multiple>
+      
+      <div id="uploadStatus"></div>
+      
+      <button class="button" id="nextBtn" disabled>Next →</button>
+    </div>
+
+    <!-- Step 2: Place on canvas -->
+    <div id="step-place" class="step">
+      <div class="step-indicator">Step 2 of 2</div>
+      <h2>Place on canvas</h2>
+      
+      <div class="status info">
+        <strong>Ready to import!</strong><br>
+        Navigate to where you want the design placed, then click "Place here"
+      </div>
+      
+      <div id="placeFileInfo"></div>
+      
+      <button class="button" id="placeBtn">📍 Place here</button>
+      <button class="button secondary" id="backBtn">← Back</button>
+    </div>
+  </div>
+
+  <!-- Export Tab -->
+  <div id="export-tab" class="tab-content">
+    <h2>Export to .pen</h2>
+    
+    <div class="section">
+      <label class="label">Export mode</label>
+      <div class="radio-group">
+        <div class="radio-option">
+          <input type="radio" id="exportSelection" name="exportMode" value="selection" checked>
+          <label for="exportSelection">Export selection</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="exportSynced" name="exportMode" value="synced">
+          <label for="exportSynced">Export synced elements</label>
+        </div>
+      </div>
+      <div class="help-text">Synced elements are those previously imported from a .pen file</div>
+    </div>
+    
+    <div id="exportStatus"></div>
+    
+    <button class="button" id="exportBtn">📤 Export</button>
+  </div>
+
+  <script>
+    // State
+    let penFileData = null;
+    let imagesData = null;
+    let currentStep = 'upload';
+
+    // DOM Elements
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const imagesInput = document.getElementById('imagesInput');
+    const selectImagesBtn = document.getElementById('selectImagesBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const placeBtn = document.getElementById('placeBtn');
+    const backBtn = document.getElementById('backBtn');
+    const exportBtn = document.getElementById('exportBtn');
+
+    // Tab switching
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        
+        tabs.forEach(t => t.classList.remove('active'));
+        tabContents.forEach(tc => tc.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+      });
+    });
+
+    // Drop zone interactions
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('active');
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('active');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('active');
+      
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].name.endsWith('.pen')) {
+        handlePenFile(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handlePenFile(e.target.files[0]);
+      }
+    });
+
+    // Handle pen file upload
+    function handlePenFile(file) {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          penFileData = JSON.parse(e.target.result);
+          
+          document.getElementById('fileInfo').innerHTML = `
+            <div class="file-info">
+              <div class="file-name">${file.name}</div>
+              <div class="file-details">
+                Version: ${penFileData.version || 'Unknown'} • 
+                ${penFileData.children ? penFileData.children.length : 0} elements
+              </div>
+            </div>
+          `;
+          document.getElementById('fileInfo').style.display = 'block';
+          
+          nextBtn.disabled = false;
+          
+          showStatus('uploadStatus', 'success', '✓ File loaded successfully');
+        } catch (error) {
+          showStatus('uploadStatus', 'error', '✗ Invalid .pen file: ' + error.message);
+          penFileData = null;
+          nextBtn.disabled = true;
+        }
+      };
+      
+      reader.readAsText(file);
+    }
+
+    // Select images folder
+    selectImagesBtn.addEventListener('click', () => imagesInput.click());
+
+    imagesInput.addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (files.length > 0) {
+        imagesData = {};
+        let loadedCount = 0;
+        
+        for (const file of files) {
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              imagesData[file.name] = event.target.result;
+              loadedCount++;
+              
+              if (loadedCount === files.length) {
+                document.getElementById('imagesInfo').innerHTML = `
+                  <div class="status success">✓ Loaded ${Object.keys(imagesData).length} images</div>
+                `;
+                document.getElementById('imagesInfo').style.display = 'block';
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      }
+    });
+
+    // Next button
+    nextBtn.addEventListener('click', () => {
+      if (penFileData) {
+        goToStep('place');
+        
+        document.getElementById('placeFileInfo').innerHTML = document.getElementById('fileInfo').innerHTML;
+        
+        parent.postMessage({
+          pluginMessage: {
+            type: 'ready-to-place',
+            data: penFileData,
+            images: imagesData
+          }
+        }, '*');
+      }
+    });
+
+    // Back button
+    backBtn.addEventListener('click', () => {
+      goToStep('upload');
+    });
+
+    // Place button
+    placeBtn.addEventListener('click', () => {
+      placeBtn.disabled = true;
+      placeBtn.textContent = 'Placing...';
+      
+      parent.postMessage({
+        pluginMessage: {
+          type: 'place-import',
+          data: penFileData,
+          images: imagesData
+        }
+      }, '*');
+    });
+
+    // Export button
+    exportBtn.addEventListener('click', () => {
+      const mode = document.querySelector('input[name="exportMode"]:checked').value;
+      
+      exportBtn.disabled = true;
+      exportBtn.textContent = 'Exporting...';
+      
+      parent.postMessage({
+        pluginMessage: {
+          type: 'export-pen',
+          mode: mode
+        }
+      }, '*');
+    });
+
+    // Helper: Go to step
+    function goToStep(step) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById(`step-${step}`).classList.add('active');
+      currentStep = step;
+    }
+
+    // Helper: Show status message
+    function showStatus(elementId, type, message) {
+      const element = document.getElementById(elementId);
+      element.className = `status ${type}`;
+      element.innerHTML = message;
+      element.style.display = 'block';
+      
+      if (type === 'success') {
+        setTimeout(() => {
+          element.style.display = 'none';
+        }, 3000);
+      }
+    }
+    
+    // Display file analysis
+    function displayAnalysis(analysis) {
+      const types = Object.entries(analysis.elementTypes)
+        .map(([type, count]) => `${type}: ${count}`)
+        .join(', ');
+      
+      document.getElementById('analysisInfo').innerHTML = `
+        <div class="file-info">
+          <div class="file-name">📊 File Analysis</div>
+          <div class="file-details">
+            <strong>Version:</strong> ${analysis.version}<br>
+            <strong>Total Elements:</strong> ${analysis.totalElements}<br>
+            <strong>Components:</strong> ${analysis.components} | <strong>Instances:</strong> ${analysis.instances}<br>
+            <strong>Auto-Layout Frames:</strong> ${analysis.autoLayoutFrames} | <strong>Absolute:</strong> ${analysis.absoluteFrames}<br>
+            <strong>Text Nodes:</strong> ${analysis.textNodes} | <strong>Images:</strong> ${analysis.images}<br>
+            <strong>Variables:</strong> ${analysis.variables} | <strong>Max Depth:</strong> ${analysis.maxDepth}<br>
+            <strong>Types:</strong> ${types}
+          </div>
+        </div>
+      `;
+      document.getElementById('analysisInfo').style.display = 'block';
+    }
+
+    // Listen for messages from plugin
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'import-success') {
+        showStatus('uploadStatus', 'success', '✓ Import successful');
+      } else if (msg.type === 'import-error') {
+        showStatus('uploadStatus', 'error', '✗ Error: ' + msg.error);
+        nextBtn.disabled = false;
+      } else if (msg.type === 'placement-complete') {
+        placeBtn.disabled = false;
+        placeBtn.textContent = '📍 Place here';
+        goToStep('upload');
+        
+        // Reset state
+        penFileData = null;
+        imagesData = null;
+        fileInput.value = '';
+        imagesInput.value = '';
+        document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('imagesInfo').style.display = 'none';
+        nextBtn.disabled = true;
+      } else if (msg.type === 'export-data') {
+        // Download the pen file
+        const blob = new Blob([JSON.stringify(msg.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'export.pen';
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        showStatus('exportStatus', 'success', '✓ Export successful');
+        exportBtn.disabled = false;
+        exportBtn.textContent = '📤 Export';
+      } else if (msg.type === 'export-error') {
+        showStatus('exportStatus', 'error', '✗ Error: ' + msg.error);
+        exportBtn.disabled = false;
+        exportBtn.textContent = '📤 Export';
+      } else if (msg.type === 'ready-to-place') {
+        // Store the data for placement
+        penFileData = msg.data;
+        imagesData = msg.images;
+        
+        // Display analysis if available
+        if (msg.analysis) {
+          displayAnalysis(msg.analysis);
+        }
+      } else if (msg.type === 'fetch-icon') {
+        // Fetch icon SVG from CDN
+        fetchIconSVG(msg.iconName, msg.iconFamily, msg.nodeId);
+      } else if (msg.type === 'download-pen') {
+        // Download pen file from menu command
+        const blob = new Blob([JSON.stringify(msg.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = msg.filename || 'export.pen';
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        // Wait a bit before closing to ensure download starts
+        setTimeout(() => {
+          parent.postMessage({ pluginMessage: { type: 'close-after-download' } }, '*');
+        }, 200);
+      }
+    };
+
+    // Fetch icon SVG from CDN
+    async function fetchIconSVG(iconName, iconFamily, nodeId) {
+      try {
+        let svgUrl = '';
+        
+        // Map icon family to CDN URL
+        if (iconFamily === 'lucide' || iconFamily.toLowerCase().includes('lucide')) {
+          // Lucide icons CDN
+          svgUrl = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${iconName}.svg`;
+        } else if (iconFamily.toLowerCase().includes('material')) {
+          // Material Symbols - use a fallback since they're not easily accessible via CDN
+          // For now, send back null and let it use placeholder
+          parent.postMessage({
+            pluginMessage: {
+              type: 'icon-svg-fetched',
+              nodeId: nodeId,
+              svgPath: null,
+              error: 'Material Symbols not yet supported'
+            }
+          }, '*');
+          return;
+        } else {
+          // Unknown icon family
+          parent.postMessage({
+            pluginMessage: {
+              type: 'icon-svg-fetched',
+              nodeId: nodeId,
+              svgPath: null,
+              error: 'Unknown icon family: ' + iconFamily
+            }
+          }, '*');
+          return;
+        }
+
+        // Fetch the SVG
+        const response = await fetch(svgUrl);
+        if (!response.ok) {
+          throw new Error('Icon not found: ' + iconName);
+        }
+
+        const svgText = await response.text();
+        
+        // Extract path data from SVG
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+        const pathElements = svgDoc.querySelectorAll('path, circle, rect, polygon, polyline');
+        
+        if (pathElements.length === 0) {
+          throw new Error('No path data found in SVG');
+        }
+
+        // Get the first path element's d attribute
+        const pathData = pathElements[0].getAttribute('d');
+        
+        if (!pathData) {
+          throw new Error('No d attribute found in path');
+        }
+
+        // Send the SVG path back to plugin
+        parent.postMessage({
+          pluginMessage: {
+            type: 'icon-svg-fetched',
+            nodeId: nodeId,
+            svgPath: pathData,
+            iconName: iconName
+          }
+        }, '*');
+
+      } catch (error) {
+        console.error('[UI] Error fetching icon:', error);
+        parent.postMessage({
+          pluginMessage: {
+            type: 'icon-svg-fetched',
+            nodeId: nodeId,
+            svgPath: null,
+            error: error.message
+          }
+        }, '*');
+      }
+    }
+  </script>
+</body>
+</html>
