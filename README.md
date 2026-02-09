@@ -2,6 +2,21 @@
 
 A powerful Figma plugin that enables seamless bidirectional conversion between [Pencil.dev](https://pencil.dev) `.pen` files and Figma designs.
 
+## 🎬 Demo
+
+Watch the plugin in action:
+
+![Demo Video](./video/2026-02-08%2021-56-09.mp4)
+
+> **Video**: See how to import a `.pen` file, analyze its structure, and place it on the Figma canvas in seconds.
+
+## 🌟 Platform Support
+
+This plugin works across all Figma platforms:
+- ✅ **Figma Desktop App** (Windows, macOS, Linux)
+- ✅ **Figma Web App** (Browser-based)
+- ✅ **FigJam** (Collaborative whiteboarding)
+
 ## 🎯 What It Does
 
 This plugin bridges the gap between Pencil.dev (a design tool for IDEs) and Figma by:
@@ -11,32 +26,111 @@ This plugin bridges the gap between Pencil.dev (a design tool for IDEs) and Figm
 3. **Compressing** design data when creating elements in Figma
 4. **Uncompressing** data when exporting back to `.pen` format
 
+## 💡 Why Use This Plugin?
+
+### For Designers
+- **Work in your preferred tool**: Design in Pencil.dev (closer to code) or Figma (traditional design)
+- **No vendor lock-in**: Move designs freely between platforms
+- **Preserve structure**: Components, instances, and auto-layout survive the conversion
+- **Collaborate better**: Share designs with teams using different tools
+
+### For Developers
+- **Design-to-code workflow**: Import Pencil designs directly into Figma for handoff
+- **Version control**: `.pen` files are JSON, perfect for Git
+- **Programmatic design**: Create designs in code (Pencil) and visualize in Figma
+- **Rapid prototyping**: Iterate in code, preview in Figma
+
+### For Teams
+- **Unified workflow**: Bridge the gap between design and development
+- **Asset reusability**: Components work across both platforms
+- **Flexible tooling**: Choose the right tool for each task
+- **Seamless handoff**: Designers and developers speak the same language
+
 ## 🔄 How It Works
 
-### The Compression/Decompression Cycle
+### The Magic Behind the Conversion
 
-#### When Importing (.pen → Figma):
-The plugin reads the `.pen` file (which contains structured JSON data) and converts it into native Figma elements:
+Think of this plugin as a **translator** between two design languages. Here's what happens under the hood:
 
-- **Frames** with auto-layout become Figma frames with layout properties
-- **Components** marked as `reusable: true` become Figma components
-- **Instances** (`type: "ref"`) become component instances
-- **Text, shapes, vectors** are converted to their Figma equivalents
-- **Variables** (like `$red`, `$white`) are resolved to actual color values
-- **Metadata** is stored invisibly on each node using `pluginData` for sync tracking
+#### 📥 When Importing (.pen → Figma):
 
-**Result**: Your Pencil design is now editable in Figma with all structure intact.
+1. **Parse**: The plugin reads your `.pen` file (structured JSON)
+2. **Analyze**: Detects components, instances, layouts, and element types
+3. **Convert**: Transforms Pencil's format into Figma's native structure:
+   - `layout: "horizontal"` → Figma Auto-Layout (horizontal)
+   - `width: "fill_container"` → `layoutSizingHorizontal: "FILL"`
+   - `$primary` variable → Actual color value `#0066FF`
+   - `reusable: true` → Figma Component
+   - `type: "ref"` → Component Instance
+4. **Create**: Builds actual Figma nodes with all properties applied
+5. **Tag**: Stores invisible metadata on each element for sync tracking
+6. **Position**: Places everything on your canvas at the exact coordinates
 
-#### When Exporting (Figma → .pen):
-The plugin reads Figma nodes and converts them back to `.pen` format:
+**Result**: Your Pencil design is now fully editable in Figma with all structure, components, and styling intact.
 
-- Figma frames become `frame` elements
-- Components become frames with `reusable: true`
-- Instances become `ref` elements with override data
-- All properties (colors, dimensions, layout) are extracted
-- Metadata is preserved for sync tracking
+#### 📤 When Exporting (Figma → .pen):
 
-**Result**: Your Figma design is now a `.pen` file that can be used in Pencil.dev.
+1. **Scan**: Reads selected Figma nodes or entire page
+2. **Extract**: Pulls out all properties (colors, dimensions, layout modes)
+3. **Convert**: Transforms Figma's format back to Pencil's structure:
+   - Auto-Layout (horizontal) → `layout: "horizontal"`
+   - `layoutSizingHorizontal: "FILL"` → `width: "fill_container"`
+   - Figma Component → `reusable: true`
+   - Component Instance → `type: "ref"` with overrides
+4. **Rebuild**: Reconstructs the component/instance relationships
+5. **Package**: Creates a `.pen` JSON file ready for Pencil.dev
+
+**Result**: Your Figma design is now a `.pen` file that can be used in Pencil.dev or version controlled with your code.
+
+### Data Compression Explained
+
+**"Compression"** means converting verbose Figma properties into Pencil's compact format:
+- Figma's `layoutMode: "HORIZONTAL"` + `primaryAxisAlignItems: "MIN"` → Pencil's `layout: "horizontal"` + `justifyContent: "start"`
+- Figma's color object `{r: 1, g: 0, b: 0}` → Pencil's hex `"#FF0000"`
+
+**"Decompression"** means expanding Pencil's compact format into Figma's detailed properties:
+- Pencil's `"hug_contents"` → Figma's `layoutSizingHorizontal: "HUG"` + proper resizing
+- Pencil's `$primary` → Resolved color value from variables object
+3. **Convert**: Transforms Pencil's format into Figma's native structure
+   - `layout: "horizontal"` → Figma Auto-Layout (horizontal)
+   - `width: "fill_container"` → `layoutSizingHorizontal: "FILL"`
+   - `$primary` variable → Actual color value `#0066FF`
+   - `reusable: true` → Figma Component
+4. **Create**: Builds actual Figma nodes (frames, text, shapes, vectors)
+5. **Tag**: Stores invisible metadata on each node for sync tracking
+6. **Position**: Places everything on your canvas with preserved coordinates
+
+**Result**: Your Pencil design is now fully editable in Figma with all structure, components, and styling intact.
+
+#### 📤 When Exporting (Figma → .pen):
+
+1. **Traverse**: Walks through selected Figma nodes or entire page
+2. **Extract**: Reads all properties (colors, dimensions, layout modes)
+3. **Convert**: Transforms Figma's structure back to Pencil format
+   - Auto-Layout (horizontal) → `layout: "horizontal"`
+   - `layoutSizingHorizontal: "FILL"` → `width: "fill_container"`
+   - Figma Component → `reusable: true`
+   - Component Instance → `type: "ref"` with overrides
+4. **Package**: Bundles everything into a clean JSON structure
+5. **Download**: Saves as a `.pen` file ready for Pencil.dev
+
+**Result**: Your Figma design is now a `.pen` file that can be opened, edited, and version-controlled in Pencil.dev.
+
+### 🔐 The Sync Mechanism
+
+Each imported element gets a hidden "passport" that tracks its origin:
+
+```javascript
+// Invisible metadata stored on every node
+node.setPluginData('pencilId', 'button_primary_123');
+node.setPluginData('pencilSync', 'true');
+```
+
+This enables:
+- **Round-trip editing**: Import → Edit in Figma → Export → Edit in Pencil → Repeat
+- **Selective export**: Only export elements that came from Pencil
+- **Update tracking**: Know exactly which elements are synced
+- **Conflict resolution**: Match elements across platforms by ID
 
 ## ✨ Key Features
 
@@ -47,12 +141,24 @@ The plugin reads Figma nodes and converts them back to `.pen` format:
 - **Image Support**: Upload local images alongside your `.pen` file
 - **Variable Resolution**: Resolves color variables like `$primary` to actual values
 - **Smart Positioning**: Choose where to place imports on your canvas
+- **File Analysis**: Preview element counts, component stats before importing
 
 ### 📤 Export Features
 - **Selection Export**: Export only selected elements
 - **Page Export**: Export entire pages
 - **Synced Elements**: Export only elements that were imported from Pencil
 - **Metadata Preservation**: Maintains sync IDs for bidirectional updates
+- **Menu Commands**: Quick export via right-click menu
+
+### 🎨 Platform Support
+
+This plugin works across all Figma platforms:
+
+- ✅ **Figma Desktop App** (Windows, macOS, Linux)
+- ✅ **Figma Web App** (Browser-based)
+- ✅ **FigJam** (Whiteboarding tool)
+
+> **Note**: Some features like network requests (icon fetching) work best in the desktop app due to browser security restrictions.
 
 ### 🎨 Supported Elements
 
@@ -216,13 +322,32 @@ This enables:
 }
 ```
 
+## 🚧 Upcoming Features
+
+We're actively working on these enhancements:
+
+### Coming Soon
+- 🖼️ **Advanced Image Support**: Automatic image detection and embedding
+- 🎨 **SVG Auto-Detection**: Smart detection and conversion of complex SVG paths
+- 🌈 **Gradient Support**: Full gradient import/export (linear, radial, conic)
+- 🔤 **Extended Icon Libraries**: Support for Material Icons, Font Awesome, and custom icon sets
+- 🔄 **Live Sync**: Real-time updates between Pencil and Figma
+- 📦 **Batch Operations**: Import/export multiple files at once
+- 🎯 **Smart Mapping**: AI-assisted element matching for updates
+
+### Under Consideration
+- 🔌 **VS Code Extension**: Direct integration with Pencil.dev in VS Code
+- 🌐 **Cloud Sync**: Store and sync designs via cloud storage
+- 📱 **Mobile Preview**: Preview designs on mobile devices
+- 🎨 **Theme Support**: Import/export design tokens and themes
+
 ## 🐛 Known Limitations
 
 - **Fonts**: Falls back to Inter if font unavailable
 - **Complex SVG paths**: Some arc commands approximated as lines
-- **Icon fonts**: Only Lucide icons supported via CDN
-- **Image URLs**: Must be absolute or uploaded locally
-- **Gradients**: Converted to solid fallback colors
+- **Icon fonts**: Currently only Lucide icons supported via CDN
+- **Image URLs**: Must be absolute or uploaded locally (auto-detection coming soon)
+- **Gradients**: Currently converted to solid fallback colors (full support coming soon)
 - **Deep nesting**: Very deep component nesting may have edge cases
 
 ## 🛠️ Development
