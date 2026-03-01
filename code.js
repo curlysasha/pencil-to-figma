@@ -144,32 +144,60 @@ figma.ui.onmessage = async (msg) => {
       figma.ui.postMessage({ type: 'export-error', error: error.message });
     }
   } else if (msg.type === 'icon-svg-fetched') {
-    // Handle fetched icon SVG
+    // Handle fetched icon SVG - use createNodeFromSvg for proper rendering
     try {
-      if (msg.svgPath && msg.nodeId) {
+      if (msg.svgString && msg.nodeId) {
         console.log('[ICON] Received SVG for icon:', msg.iconName);
-        
-        // Find the vector node by ID
-        const node = figma.getNodeById(msg.nodeId);
-        
-        if (node && node.type === 'VECTOR') {
-          // Update the vector path with the actual icon SVG
+
+        // Find the placeholder node by ID
+        const placeholderNode = figma.getNodeById(msg.nodeId);
+
+        if (placeholderNode) {
           try {
-            node.vectorPaths = [{
-              windingRule: 'NONZERO',
-              data: msg.svgPath
-            }];
-            
-            // Remove the placeholder flag
-            node.setPluginData('isIconPlaceholder', 'false');
-            node.setPluginData('pendingIconFetch', 'false');
-            
-            console.log('[ICON] Successfully updated vector with icon SVG:', msg.iconName);
-          } catch (pathError) {
-            console.error('[ICON] Failed to set vector path:', pathError);
+            // Get the fill color from the placeholder before we remove it
+            const existingFills = placeholderNode.fills || [];
+            const targetWidth = placeholderNode.width;
+            const targetHeight = placeholderNode.height;
+            const parent = placeholderNode.parent;
+            const indexInParent = parent ? Array.from(parent.children).indexOf(placeholderNode) : -1;
+
+            // Use figma.createNodeFromSvg for proper SVG rendering
+            // This handles stroke-based icons (like Lucide), multiple paths, etc.
+            const svgFrame = figma.createNodeFromSvg(msg.svgString);
+
+            // The result is a frame containing vector children
+            svgFrame.name = placeholderNode.name;
+            svgFrame.fills = []; // Remove default white background from SVG frame
+            svgFrame.resize(targetWidth, targetHeight);
+
+            // Apply the icon color to all vector children
+            if (existingFills.length > 0) {
+              applyFillToSvgChildren(svgFrame, existingFills);
+            }
+
+            // Replace the placeholder with the SVG node in the same parent and position
+            if (parent && indexInParent >= 0) {
+              parent.insertChild(indexInParent, svgFrame);
+              placeholderNode.remove();
+
+              // Apply layout sizing if parent is auto-layout
+              if (parent.layoutMode && parent.layoutMode !== 'NONE') {
+                if ('layoutSizingHorizontal' in svgFrame) {
+                  svgFrame.layoutSizingHorizontal = 'FIXED';
+                  svgFrame.layoutSizingVertical = 'FIXED';
+                }
+              }
+            } else {
+              placeholderNode.remove();
+            }
+
+            console.log('[ICON] Successfully replaced placeholder with SVG:', msg.iconName);
+          } catch (svgError) {
+            console.warn('[ICON] Failed to create SVG node for', msg.iconName, ':', svgError.message);
+            // Keep the placeholder circle if SVG creation fails
           }
         } else {
-          console.warn('[ICON] Node not found or not a vector:', msg.nodeId);
+          console.warn('[ICON] Placeholder node not found:', msg.nodeId);
         }
       } else {
         console.warn('[ICON] Failed to fetch icon:', msg.error);
@@ -389,21 +417,9 @@ function convertPenToFigmaFormat(penData) {
       }
     }
 
-    // Normalize stroke thickness - handle object format
-    if (converted.stroke && typeof converted.stroke === 'object' && converted.stroke.thickness) {
-      if (typeof converted.stroke.thickness === 'object') {
-        // Stroke thickness is an object with top/bottom/left/right
-        // Figma doesn't support per-side stroke thickness, so use the maximum value
-        const thicknesses = [];
-        if (converted.stroke.thickness.top !== undefined) thicknesses.push(converted.stroke.thickness.top);
-        if (converted.stroke.thickness.bottom !== undefined) thicknesses.push(converted.stroke.thickness.bottom);
-        if (converted.stroke.thickness.left !== undefined) thicknesses.push(converted.stroke.thickness.left);
-        if (converted.stroke.thickness.right !== undefined) thicknesses.push(converted.stroke.thickness.right);
-        if (thicknesses.length > 0) {
-          converted.stroke.thickness = Math.max.apply(Math, thicknesses);
-        }
-      }
-    }
+    // Normalize stroke thickness - keep per-side format for applyStroke to handle
+    // Figma DOES support per-side stroke weights (strokeTopWeight, etc.)
+    // So we preserve the object format here
 
     // Recursively convert children
     if (element.children && Array.isArray(element.children)) {
@@ -478,6 +494,27 @@ async function createNodesFromPenData(penData, images) {
 
   // Second pass: create instances (after all components are created)
   await createInstances(figmaData.children, figmaData.variables);
+
+  // Cleanup pass: remove any orphaned nodes that ended up on the page
+  // This can happen when Figma's createFrame/createVector auto-adds to the page
+  // but the node was never properly parented due to errors
+  const expectedNodeIds = new Set(nodes.map(function(n) { return n.id; }));
+  const pageChildren = figma.currentPage.children;
+  let orphansRemoved = 0;
+  for (let i = pageChildren.length - 1; i >= 0; i--) {
+    const pageChild = pageChildren[i];
+    // Skip nodes we intentionally created as top-level
+    if (expectedNodeIds.has(pageChild.id)) continue;
+    // Skip pre-existing nodes without pencilSync data
+    if (!pageChild.getPluginData || !pageChild.getPluginData('pencilSync')) continue;
+    // This is a pencilSync node that isn't in our expected list - it's an orphan
+    console.warn(`[CLEANUP] Removing orphaned node: ${pageChild.name} (${pageChild.type})`);
+    pageChild.remove();
+    orphansRemoved++;
+  }
+  if (orphansRemoved > 0) {
+    console.log(`[CLEANUP] Removed ${orphansRemoved} orphaned nodes`);
+  }
 
   // Log summary
   console.log('');
@@ -568,6 +605,10 @@ async function createNode(element, variables, parentNode = null) {
   } catch (error) {
     console.error('Error creating node:', element.type, element.name, error);
     figma.notify('⚠️ Error creating ' + element.name + ': ' + error.message);
+    // Clean up any partially-created Figma node to prevent orphaned frames
+    if (node && node.parent) {
+      try { node.remove(); } catch (e) { /* ignore cleanup errors */ }
+    }
     return null;
   }
 
@@ -845,10 +886,21 @@ async function createFrame(element, variables, parentNode = null) {
 
   // Fill
   if (element.fill) {
-    const fill = parseColor(element.fill, variables, element.name || element.id);
-    if (fill) {
-      frame.fills = [fill];
+    // Handle image fills separately
+    if (typeof element.fill === 'object' && element.fill.type === 'image') {
+      await applyImageFill(frame, element.fill);
+    } else {
+      const fill = parseColor(element.fill, variables, element.name || element.id);
+      if (fill) {
+        frame.fills = [fill];
+      } else {
+        // parseColor returned null (e.g. disabled fill) - clear default white
+        frame.fills = [];
+      }
     }
+  } else {
+    // No fill specified - clear default white fill so frame is transparent
+    frame.fills = [];
   }
 
   // Stroke
@@ -1062,6 +1114,9 @@ async function createImage(element, variables, parentNode = null) {
     if (element.y !== undefined && !isNaN(element.y)) frame.y = element.y;
   }
 
+  // Clear default white fill
+  frame.fills = [];
+
   // Try to load image
   if (element.src) {
     console.log(`[IMAGE] Looking for image: ${element.src}`);
@@ -1084,8 +1139,12 @@ async function createImage(element, variables, parentNode = null) {
   }
 
   if (element.fill) {
-    const fill = parseColor(element.fill, variables, element.name || element.id);
-    if (fill) frame.fills = [fill];
+    if (typeof element.fill === 'object' && element.fill.type === 'image') {
+      await applyImageFill(frame, element.fill);
+    } else {
+      const fill = parseColor(element.fill, variables, element.name || element.id);
+      if (fill) frame.fills = [fill];
+    }
   }
 
   return frame;
@@ -1546,59 +1605,35 @@ async function createIconFont(element, variables, parentNode = null) {
   const iconName = element.iconFontName || 'circle';
   const iconFamily = element.iconFontFamily || 'lucide';
 
-  console.log(`[ICON] Creating vector for icon: ${iconName} (${iconFamily})`);
+  console.log(`[ICON] Creating placeholder for icon: ${iconName} (${iconFamily})`);
 
-  // Create a vector node (this will be recognized as SVG in Figma)
-  const vector = figma.createVector();
-  vector.name = element.name || `Icon: ${iconName}`;
-  vector.resize(width, height);
+  // Create a small frame as placeholder until the real SVG is fetched
+  // Using a frame because it can be cleanly replaced by createNodeFromSvg result
+  const placeholder = figma.createFrame();
+  placeholder.name = element.name || `Icon: ${iconName}`;
+  placeholder.resize(width, height);
+  placeholder.fills = []; // Transparent - no white background
 
   // Don't set x/y for children of auto-layout frames
   const isInAutoLayout = parentNode && parentNode.layoutMode && parentNode.layoutMode !== 'NONE';
   if (!isInAutoLayout) {
-    if (element.x !== undefined && !isNaN(element.x)) vector.x = element.x;
-    if (element.y !== undefined && !isNaN(element.y)) vector.y = element.y;
+    if (element.x !== undefined && !isNaN(element.x)) placeholder.x = element.x;
+    if (element.y !== undefined && !isNaN(element.y)) placeholder.y = element.y;
   }
 
-  // Create a simple placeholder path (circle) until real SVG is fetched
-  // Use a simple circle path that Figma can parse
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.min(width, height) / 3;
-  
-  // Simple circle using 4 arc segments (more reliable than 2-arc approach)
-  const circlePath = `M ${centerX} ${centerY - radius} ` +
-    `A ${radius} ${radius} 0 0 1 ${centerX + radius} ${centerY} ` +
-    `A ${radius} ${radius} 0 0 1 ${centerX} ${centerY + radius} ` +
-    `A ${radius} ${radius} 0 0 1 ${centerX - radius} ${centerY} ` +
-    `A ${radius} ${radius} 0 0 1 ${centerX} ${centerY - radius} Z`;
-  
-  try {
-    vector.vectorPaths = [{
-      windingRule: 'NONZERO',
-      data: circlePath
-    }];
-  } catch (error) {
-    console.warn('[ICON] Failed to set vector path:', error.message);
-  }
-
-  // Apply fill color
+  // Resolve the fill color and store it on the placeholder
+  // This will be applied to the SVG when it arrives
   if (element.fill) {
     const fill = parseColor(element.fill, variables, element.name || element.id);
     if (fill) {
-      vector.fills = [fill];
-    } else {
-      vector.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
+      placeholder.fills = [fill]; // Store fill so icon-svg-fetched handler can read it
     }
-  } else {
-    vector.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
   }
 
   // Store icon metadata
-  vector.setPluginData('iconFontName', iconName);
-  vector.setPluginData('iconFontFamily', iconFamily);
-  vector.setPluginData('isIconPlaceholder', 'true');
-  vector.setPluginData('pendingIconFetch', 'true');
+  placeholder.setPluginData('iconFontName', iconName);
+  placeholder.setPluginData('iconFontFamily', iconFamily);
+  placeholder.setPluginData('isIconPlaceholder', 'true');
 
   // Request icon SVG from UI (UI has network access, plugin doesn't)
   console.log(`[ICON] Requesting icon fetch from UI: ${iconName}`);
@@ -1606,10 +1641,10 @@ async function createIconFont(element, variables, parentNode = null) {
     type: 'fetch-icon',
     iconName: iconName,
     iconFamily: iconFamily,
-    nodeId: vector.id
+    nodeId: placeholder.id
   });
 
-  return vector;
+  return placeholder;
 }
 
 
@@ -1632,7 +1667,14 @@ function createGroup(element, variables, parentNode = null) {
 
   if (element.fill) {
     const fill = parseColor(element.fill, variables, element.name || element.id);
-    if (fill) frame.fills = [fill];
+    if (fill) {
+      frame.fills = [fill];
+    } else {
+      frame.fills = [];
+    }
+  } else {
+    // No fill - clear default white
+    frame.fills = [];
   }
 
   return frame;
@@ -1809,23 +1851,27 @@ function convertToFigmaGradient(gradientObject, variables, context) {
     }
     
     // Resolve variables
+    let alpha = 1;
     if (typeof colorValue === 'string') {
       const resolved = resolveVariable(colorValue, variables);
       if (resolved.startsWith('#')) {
-        rgb = hexToRgb(resolved);
+        const rgba = hexToRgba(resolved);
+        rgb = { r: rgba.r, g: rgba.g, b: rgba.b };
+        alpha = rgba.a;
       } else if (resolved.startsWith('rgb')) {
         rgb = parseRgb(resolved);
       }
     }
-    
+
     if (!rgb) {
       console.warn('[convertToFigmaGradient] Could not parse color stop:', colorValue);
       continue;
     }
-    
+
+    // Figma requires color.a (alpha) on gradient stops
     figmaStops.push({
       position: position,
-      color: rgb
+      color: { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha }
     });
   }
   
@@ -1978,7 +2024,10 @@ function parseColor(colorValue, variables, context) {
   }
 
   if (resolved.startsWith('#')) {
-    return { type: 'SOLID', color: hexToRgb(resolved) };
+    const rgba = hexToRgba(resolved);
+    const fill = { type: 'SOLID', color: { r: rgba.r, g: rgba.g, b: rgba.b } };
+    if (rgba.a < 1) fill.opacity = rgba.a;
+    return fill;
   }
 
   // Handle rgb/rgba
@@ -2029,6 +2078,82 @@ function parseRgb(rgb) {
   return { r: 0, g: 0, b: 0 };
 }
 
+// Helper: Apply fill color to all vector children of an SVG frame (for icon recoloring)
+function applyFillToSvgChildren(node, fills) {
+  if (!node) return;
+
+  // For vectors, apply fills as strokes (Lucide icons are stroke-based)
+  if (node.type === 'VECTOR') {
+    // If vector has strokes (stroke-based icon), recolor the strokes
+    if (node.strokes && node.strokes.length > 0) {
+      node.strokes = fills;
+    }
+    // If vector has non-empty fills, recolor them
+    if (node.fills && node.fills.length > 0) {
+      const hasVisibleFill = node.fills.some(function(f) {
+        return f.visible !== false && f.opacity !== 0;
+      });
+      if (hasVisibleFill) {
+        node.fills = fills;
+      }
+    }
+  }
+
+  // Recurse into children
+  if ('children' in node) {
+    for (let i = 0; i < node.children.length; i++) {
+      applyFillToSvgChildren(node.children[i], fills);
+    }
+  }
+}
+
+// Helper: Apply image fill to a frame node
+async function applyImageFill(node, imageFillObj) {
+  if (!imageFillObj || !imageFillObj.url) {
+    console.log('[IMAGE_FILL] No URL in image fill object');
+    node.fills = [];
+    return;
+  }
+
+  const url = imageFillObj.url;
+  console.log(`[IMAGE_FILL] Applying image fill: ${url}`);
+
+  // Try to find the image in the cache
+  const imageData = imageCache.get(url);
+  if (imageData) {
+    try {
+      const imageBytes = base64ToUint8Array(imageData.split(',')[1]);
+      const image = figma.createImage(imageBytes);
+      const scaleMode = imageFillObj.mode === 'fit' ? 'FIT' : 'FILL';
+      node.fills = [{ type: 'IMAGE', scaleMode: scaleMode, imageHash: image.hash }];
+      console.log(`[IMAGE_FILL] Successfully applied image: ${url}`);
+      return;
+    } catch (e) {
+      console.error(`[IMAGE_FILL] Failed to load image ${url}:`, e);
+    }
+  }
+
+  // Also try with just the filename
+  const filename = url.split('/').pop();
+  const imageDataByName = imageCache.get(filename);
+  if (imageDataByName) {
+    try {
+      const imageBytes = base64ToUint8Array(imageDataByName.split(',')[1]);
+      const image = figma.createImage(imageBytes);
+      const scaleMode = imageFillObj.mode === 'fit' ? 'FIT' : 'FILL';
+      node.fills = [{ type: 'IMAGE', scaleMode: scaleMode, imageHash: image.hash }];
+      console.log(`[IMAGE_FILL] Successfully applied image by filename: ${filename}`);
+      return;
+    } catch (e) {
+      console.error(`[IMAGE_FILL] Failed to load image by filename ${filename}:`, e);
+    }
+  }
+
+  // Image not found in cache - set a placeholder fill
+  console.warn(`[IMAGE_FILL] Image not found in cache: ${url}`);
+  node.fills = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.3 }, opacity: 0.5 }];
+}
+
 // Helper: Apply stroke
 function applyStroke(node, stroke, variables, context) {
   if (!stroke) return;
@@ -2042,7 +2167,22 @@ function applyStroke(node, stroke, variables, context) {
 
     // Handle complex thickness (top, right, bottom, left)
     if (typeof thickness === 'object') {
-      node.strokeWeight = thickness.top || 1;
+      // Per-side stroke weights - use Figma's individual stroke weight properties
+      const top = thickness.top || 0;
+      const right = thickness.right || 0;
+      const bottom = thickness.bottom || 0;
+      const left = thickness.left || 0;
+
+      // Set individual stroke weights if the node supports it
+      if ('strokeTopWeight' in node) {
+        node.strokeTopWeight = top;
+        node.strokeRightWeight = right;
+        node.strokeBottomWeight = bottom;
+        node.strokeLeftWeight = left;
+      } else {
+        // Fallback: use the max thickness
+        node.strokeWeight = Math.max(top, right, bottom, left, 1);
+      }
     } else {
       node.strokeWeight = thickness;
     }

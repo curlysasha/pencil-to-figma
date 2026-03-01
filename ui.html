@@ -637,30 +637,26 @@
     async function fetchIconSVG(iconName, iconFamily, nodeId) {
       try {
         let svgUrl = '';
-        
+
         // Map icon family to CDN URL
         if (iconFamily === 'lucide' || iconFamily.toLowerCase().includes('lucide')) {
-          // Lucide icons CDN
           svgUrl = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${iconName}.svg`;
         } else if (iconFamily.toLowerCase().includes('material')) {
-          // Material Symbols - use a fallback since they're not easily accessible via CDN
-          // For now, send back null and let it use placeholder
           parent.postMessage({
             pluginMessage: {
               type: 'icon-svg-fetched',
               nodeId: nodeId,
-              svgPath: null,
+              svgString: null,
               error: 'Material Symbols not yet supported'
             }
           }, '*');
           return;
         } else {
-          // Unknown icon family
           parent.postMessage({
             pluginMessage: {
               type: 'icon-svg-fetched',
               nodeId: nodeId,
-              svgPath: null,
+              svgString: null,
               error: 'Unknown icon family: ' + iconFamily
             }
           }, '*');
@@ -674,29 +670,14 @@
         }
 
         const svgText = await response.text();
-        
-        // Extract path data from SVG
-        const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-        const pathElements = svgDoc.querySelectorAll('path, circle, rect, polygon, polyline');
-        
-        if (pathElements.length === 0) {
-          throw new Error('No path data found in SVG');
-        }
 
-        // Get the first path element's d attribute
-        const pathData = pathElements[0].getAttribute('d');
-        
-        if (!pathData) {
-          throw new Error('No d attribute found in path');
-        }
-
-        // Send the SVG path back to plugin
+        // Send the FULL SVG string back to plugin (not just one path)
+        // Plugin will use figma.createNodeFromSvg() for proper rendering
         parent.postMessage({
           pluginMessage: {
             type: 'icon-svg-fetched',
             nodeId: nodeId,
-            svgPath: pathData,
+            svgString: svgText,
             iconName: iconName
           }
         }, '*');
@@ -707,7 +688,7 @@
           pluginMessage: {
             type: 'icon-svg-fetched',
             nodeId: nodeId,
-            svgPath: null,
+            svgString: null,
             error: error.message
           }
         }, '*');
