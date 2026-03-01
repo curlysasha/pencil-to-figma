@@ -357,6 +357,28 @@ function convertPenToFigmaFormat(penData) {
           converted.layout = 'horizontal'; // Default to horizontal for auto-layout
           normalizedLayoutCount++;
           console.log('  ✓ Inferred layout=horizontal for:', element.name || element.id);
+        } else if (element.children && Array.isArray(element.children) && element.children.length > 1) {
+          // Check if children use fill_container — strong signal parent is a flex container
+          const childrenUseFillWidth = element.children.some(function(c) {
+            return c.width === 'fill_container' || (typeof c.width === 'string' && c.width.startsWith('fill_container'));
+          });
+          const childrenUseFillHeight = element.children.some(function(c) {
+            return c.height === 'fill_container' || (typeof c.height === 'string' && c.height.startsWith('fill_container'));
+          });
+
+          if (childrenUseFillWidth) {
+            converted.layout = 'horizontal';
+            normalizedLayoutCount++;
+            console.log('  ✓ Inferred layout=horizontal (children use fill_container width) for:', element.name || element.id);
+          } else if (childrenUseFillHeight) {
+            converted.layout = 'vertical';
+            normalizedLayoutCount++;
+            console.log('  ✓ Inferred layout=vertical (children use fill_container height) for:', element.name || element.id);
+          } else {
+            converted.layout = 'none';
+            normalizedLayoutCount++;
+            console.log('  ✓ Set layout=none for:', element.name || element.id);
+          }
         } else {
           // No layout properties, default to 'none' (absolute positioning)
           converted.layout = 'none';
@@ -456,6 +478,15 @@ function convertPenToFigmaFormat(penData) {
 async function createNodesFromPenData(penData, images) {
   const nodes = [];
 
+  // Populate image cache from provided images
+  imageCache.clear();
+  if (images) {
+    for (const [filename, dataUrl] of Object.entries(images)) {
+      imageCache.set(filename, dataUrl);
+    }
+    console.log(`[IMAGE_CACHE] Loaded ${imageCache.size} images into cache. Keys:`, Array.from(imageCache.keys()).slice(0, 10));
+  }
+
   console.log('Creating nodes from pen data. Top-level children count:', penData.children ? penData.children.length : 0);
 
   // Validate input
@@ -494,6 +525,60 @@ async function createNodesFromPenData(penData, images) {
 
   // Second pass: create instances (after all components are created)
   await createInstances(figmaData.children, figmaData.variables);
+
+  // Final pass: apply deferred sizing and force-set positions for top-level nodes
+  // Top-level auto-layout frames need their sizing mode set explicitly because
+  // the deferred sizing mechanism only runs for children of auto-layout parents.
+  // Without this, auto-layout frames default to HUG and ignore the explicit resize.
+  for (let i = 0; i < nodes.length; i++) {
+    const child = figmaData.children[i];
+    const node = nodes[i];
+
+    // Apply deferred layout sizing for top-level auto-layout frames
+    if (node.layoutMode && node.layoutMode !== 'NONE') {
+      try {
+        const hSizing = node.getPluginData('deferredLayoutSizingH');
+        const vSizing = node.getPluginData('deferredLayoutSizingV');
+
+        if (hSizing === 'FIXED' && 'layoutSizingHorizontal' in node) {
+          node.layoutSizingHorizontal = 'FIXED';
+        } else if (hSizing === 'HUG' && 'layoutSizingHorizontal' in node) {
+          node.layoutSizingHorizontal = 'HUG';
+        }
+
+        if (vSizing === 'FIXED' && 'layoutSizingVertical' in node) {
+          node.layoutSizingVertical = 'FIXED';
+        } else if (vSizing === 'HUG' && 'layoutSizingVertical' in node) {
+          node.layoutSizingVertical = 'HUG';
+        }
+
+        // Re-apply explicit dimensions after sizing mode is set
+        if (hSizing === 'FIXED' && child.width !== undefined && typeof child.width === 'number') {
+          node.resize(child.width, node.height);
+        }
+        if (vSizing === 'FIXED' && child.height !== undefined && typeof child.height === 'number') {
+          node.resize(node.width, child.height);
+        }
+
+        // Clean up deferred data
+        node.setPluginData('deferredLayoutSizingH', '');
+        node.setPluginData('deferredLayoutSizingV', '');
+
+        console.log(`[SIZING] ${node.name}: h=${hSizing || 'default'}, v=${vSizing || 'default'}, size=${node.width}x${node.height}`);
+      } catch (e) {
+        console.warn(`[SIZING] Failed for ${node.name}:`, e.message);
+      }
+    }
+
+    // Force-set positions from original pen data
+    if (child && child.x !== undefined && !isNaN(child.x)) {
+      node.x = child.x;
+    }
+    if (child && child.y !== undefined && !isNaN(child.y)) {
+      node.y = child.y;
+    }
+    console.log(`[POSITION] Final: ${node.name} at (${node.x}, ${node.y}), size ${node.width}x${node.height}`);
+  }
 
   // Cleanup pass: remove any orphaned nodes that ended up on the page
   // This can happen when Figma's createFrame/createVector auto-adds to the page
@@ -2116,7 +2201,7 @@ async function applyImageFill(node, imageFillObj) {
   }
 
   const url = imageFillObj.url;
-  console.log(`[IMAGE_FILL] Applying image fill: ${url}`);
+  console.log(`[IMAGE_FILL] Applying image fill: ${url}, cache size: ${imageCache.size}`);
 
   // Try to find the image in the cache
   const imageData = imageCache.get(url);
@@ -2379,10 +2464,30 @@ function copyNodeProperties(from, to) {
 
 // Helper: Base64 to Uint8Array
 function base64ToUint8Array(base64) {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+
+  // Remove padding
+  let len = base64.length;
+  if (base64[len - 1] === '=') len--;
+  if (base64[len - 1] === '=') len--;
+
+  const byteLength = (len * 3) >> 2;
+  const bytes = new Uint8Array(byteLength);
+
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const a = lookup[base64.charCodeAt(i)];
+    const b = lookup[base64.charCodeAt(i + 1)];
+    const c = lookup[base64.charCodeAt(i + 2)];
+    const d = lookup[base64.charCodeAt(i + 3)];
+
+    bytes[p++] = (a << 2) | (b >> 4);
+    if (p < byteLength) bytes[p++] = ((b & 0xF) << 4) | (c >> 2);
+    if (p < byteLength) bytes[p++] = ((c & 0x3) << 6) | d;
   }
   return bytes;
 }

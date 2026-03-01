@@ -448,24 +448,39 @@
       const files = e.target.files;
       if (files.length > 0) {
         imagesData = {};
+        const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
         let loadedCount = 0;
-        
-        for (const file of files) {
-          if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              imagesData[file.name] = event.target.result;
-              loadedCount++;
-              
-              if (loadedCount === files.length) {
-                document.getElementById('imagesInfo').innerHTML = `
-                  <div class="status success">✓ Loaded ${Object.keys(imagesData).length} images</div>
-                `;
-                document.getElementById('imagesInfo').style.display = 'block';
-              }
-            };
-            reader.readAsDataURL(file);
-          }
+
+        for (const file of imageFiles) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target.result;
+            // Store by filename
+            imagesData[file.name] = dataUrl;
+            // Also store by relative path for pen file path matching
+            if (file.webkitRelativePath) {
+              // Store as "./images/file.png" to match pen file references
+              imagesData['./' + file.webkitRelativePath] = dataUrl;
+              // Also store without leading "./"
+              imagesData[file.webkitRelativePath] = dataUrl;
+            }
+            loadedCount++;
+
+            if (loadedCount === imageFiles.length) {
+              document.getElementById('imagesInfo').innerHTML = `
+                <div class="status success">✓ Loaded ${imageFiles.length} images</div>
+              `;
+              document.getElementById('imagesInfo').style.display = 'block';
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+
+        if (imageFiles.length === 0) {
+          document.getElementById('imagesInfo').innerHTML = `
+            <div class="status">No image files found in selected folder</div>
+          `;
+          document.getElementById('imagesInfo').style.display = 'block';
         }
       }
     });
